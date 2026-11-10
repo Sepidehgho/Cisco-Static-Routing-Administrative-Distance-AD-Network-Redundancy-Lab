@@ -1,0 +1,1000 @@
+
+# Cisco Static Routing, Administrative Distance (AD) & Network Redundancy Lab
+
+## Project Overview
+
+This project demonstrates the implementation of **Static Routing, Administrative Distance (AD), Floating Static Routes, Default Routing, and Network Redundancy** using Cisco Packet Tracer.
+
+The purpose of this lab is to understand how routers communicate across multiple networks, how routing tables work, how Cisco routers select the best route, and how backup routes can maintain network connectivity when a primary connection fails.
+
+The network consists of a central router, two branch routers (BR1 and BR2), an ISP router, switches, PCs, a laptop, and a server.
+
+This project focuses on practical network configuration, routing decisions, connectivity verification, and troubleshooting using the Cisco IOS Command Line Interface (CLI).
+
+---
+
+## Network Topology
+
+![Network Topology](topology.png)
+
+The topology includes:
+
+- **Core Router:** The central router connecting local networks, branch routers, and the ISP.
+- **BR1:** Branch router connecting the 10.10.30.0/24 network to the core network.
+- **BR2:** Branch router connecting the 10.10.40.0/24 network to the core network.
+- **ISP Router:** Provides an upstream connection.
+- **Switches:** Provide Layer 2 communication within individual LANs.
+- **Laptop0:** A client connected to the 10.10.10.0/24 network.
+- **Server0:** A server connected to the 10.10.20.0/24 network.
+- **PC2:** A client connected to the BR1 LAN.
+- **PC1:** A client connected to the BR2 LAN.
+
+BR1 and BR2 are directly connected, providing an alternative path between the branches and the central network.
+
+This connection makes it possible to demonstrate network redundancy using floating static routes.
+
+### IP Addressing Table
+
+| Network | Subnet | Description |
+|---|---|---|
+| Laptop LAN | 10.10.10.0/24 | Laptop network |
+| Server LAN | 10.10.20.0/24 | Server network |
+| BR1 LAN | 10.10.30.0/24 | Branch 1 network |
+| BR2 LAN | 10.10.40.0/24 | Branch 2 network |
+| Core–BR1 | 150.150.150.0/24 | Primary connection to BR1 |
+| Core–BR2 | 200.200.200.0/24 | Primary connection to BR2 |
+| BR1–BR2 | 185.185.185.0/24 | Redundant branch connection |
+| Core–ISP | 100.100.100.0/24 | ISP connection |
+
+All the networks use a /24 subnet mask (255.255.255.0), providing 254 usable host addresses per subnet.
+
+**Note:** The subnets are based on the topology diagram. The interface addresses used in the following configuration examples are illustrative and should be checked against the actual Packet Tracer configuration.
+
+---
+
+## 1. Understanding IP Addressing and Subnetting
+
+An IP address is a logical address assigned to a network interface.
+
+IPv4 addresses consist of 32 bits, divided into four octets.
+
+Example:
+
+192.168.1.10
+
+A subnet mask identifies the network portion and the host portion of an IP address.
+
+For example:
+
+- Network: 10.10.30.0
+- Subnet Mask: 255.255.255.0
+- CIDR Notation: /24
+- First Usable Address: 10.10.30.1
+- Last Usable Address: 10.10.30.254
+- Broadcast Address: 10.10.30.255
+
+Devices within the same subnet can communicate directly through a switch, provided the Layer 2 and IP configurations are correct.
+
+Devices in different subnets require a router or another Layer 3 device to communicate.
+
+### Default Gateway
+
+A default gateway is the router IP address that a host uses to send packets outside its local subnet.
+
+For example, a PC in the 10.10.30.0/24 network could use:
+
+- IP Address: 10.10.30.10
+- Subnet Mask: 255.255.255.0
+- Default Gateway: 10.10.30.1
+
+When the PC sends traffic to a remote network, it forwards that traffic to its default gateway.
+
+---
+
+## 2. What Is Routing?
+
+Routing is the process of forwarding packets between different IP networks.
+
+Routers examine the destination IP address of each packet and consult their routing tables to determine the forwarding path.
+
+A routing table contains information about:
+
+- Destination networks
+- Network prefixes or subnet masks
+- Next-hop IP addresses
+- Outgoing interfaces
+- Routing sources
+- Administrative Distance
+- Routing metrics
+
+### Example
+
+PC2 is located in:
+
+10.10.30.0/24
+
+Server0 is located in:
+
+10.10.20.0/24
+
+The communication path can be:
+
+PC2 → Switch0 → BR1 → Core Router → Switch3 → Server0
+
+For communication to succeed, routers must have valid forwarding information for the destination network.
+
+The return path must also be configured correctly.
+
+---
+
+## 3. Directly Connected Routes
+
+A directly connected route is automatically created when an IP address is assigned to a router interface and that interface becomes operational.
+
+Example configuration:
+
+```cisco
+Router> enable
+Router# configure terminal
+Router(config)# interface GigabitEthernet0/0
+Router(config-if)# ip address 10.10.30.1 255.255.255.0
+Router(config-if)# no shutdown
+Router(config-if)# exit
+```
+
+To verify connected routes:
+
+```cisco
+Router# show ip route
+```
+
+Example output:
+
+```text
+C 10.10.30.0/24 is directly connected, GigabitEthernet0/0
+L 10.10.30.1/32 is directly connected, GigabitEthernet0/0
+```
+
+**C = Connected**
+
+The network is directly connected to the router.
+
+**L = Local**
+
+The route represents the IP address configured on the router's interface.
+
+Directly connected routes have an Administrative Distance of 0.
+
+---
+
+## 4. Static Routing
+
+Static routing is a method of manually defining routes on a router.
+
+Unlike dynamic routing protocols such as OSPF, EIGRP, or RIP, static routing does not automatically discover remote networks.
+
+The network administrator is responsible for configuring the correct paths.
+
+### Static Route Syntax
+
+```cisco
+Router(config)# ip route <destination-network> <subnet-mask> <next-hop-address>
+```
+
+Example:
+
+```cisco
+Router(config)# ip route 10.10.20.0 255.255.255.0 150.150.150.1
+```
+
+Explanation:
+
+- `ip route`: Creates a static route.
+- `10.10.20.0`: Destination network.
+- `255.255.255.0`: Destination subnet mask.
+- `150.150.150.1`: Next-hop router address.
+
+This command tells the router:
+
+"To reach the 10.10.20.0/24 network, forward packets to 150.150.150.1."
+
+### What Is a Next-Hop IP Address?
+
+A next-hop IP address identifies the neighboring router to which packets are forwarded.
+
+It is not necessarily the final destination address.
+
+For example:
+
+BR1 → Core → Server
+
+BR1 forwards packets to the Core router, which then forwards them toward the server network.
+
+### Advantages of Static Routing
+
+- Simple to configure in small networks.
+- Minimal CPU and memory requirements.
+- No dynamic routing updates.
+- Predictable routing behavior.
+- Greater administrative control.
+
+### Disadvantages of Static Routing
+
+- Routes must be configured manually.
+- Difficult to maintain in large networks.
+- Does not automatically discover new networks.
+- More configuration work when the topology changes.
+- Standard static routes do not automatically adapt to all network failures.
+
+---
+
+## 5. Administrative Distance (AD)
+
+Administrative Distance is a value used by Cisco routers to evaluate the trustworthiness of routing information from different sources.
+
+When multiple eligible routes exist for the same destination prefix, the router generally prefers the route with the lowest Administrative Distance.
+
+### Common Administrative Distance Values
+
+| Routing Source | Administrative Distance |
+|---|---:|
+| Directly Connected | 0 |
+| Static Route | 1 |
+| EIGRP Summary Route | 5 |
+| External BGP | 20 |
+| Internal EIGRP | 90 |
+| OSPF | 110 |
+| IS-IS | 115 |
+| RIP | 120 |
+| External EIGRP | 170 |
+| Internal BGP | 200 |
+| Unknown / Unusable | 255 |
+
+### Example
+
+Assume a router learns the same destination network from two sources:
+
+Static Route:
+
+- Destination: 10.10.30.0/24
+- AD: 1
+
+OSPF Route:
+
+- Destination: 10.10.30.0/24
+- AD: 110
+
+The static route is preferred because:
+
+1 < 110
+
+The static route is installed in the routing table if it is valid and its next hop is reachable.
+
+### Administrative Distance vs. Routing Metric
+
+Administrative Distance determines the preference between routing sources.
+
+A routing metric determines the preferred path according to the rules of a routing protocol.
+
+For example:
+
+- OSPF uses cost.
+- RIP uses hop count.
+- EIGRP uses a composite metric.
+
+**Important:** Routers apply longest-prefix matching when forwarding traffic. A route with a more specific destination prefix can be used even if another, less-specific route has a lower AD.
+
+---
+
+## 6. Floating Static Routes
+
+A Floating Static Route is a backup static route configured with a higher Administrative Distance than the primary route.
+
+It is commonly used to provide redundancy in networks with multiple possible paths.
+
+### Example from This Project
+
+BR1 has two possible paths to reach the server network.
+
+Primary path:
+
+BR1 → Core → Server
+
+Backup path:
+
+BR1 → BR2 → Core → Server
+
+The primary route can be configured with the default AD of 1.
+
+```cisco
+BR1(config)# ip route 10.10.20.0 255.255.255.0 150.150.150.1
+```
+
+The backup route can be configured with AD 10.
+
+```cisco
+BR1(config)# ip route 10.10.20.0 255.255.255.0 185.185.185.2 10
+```
+
+### Explanation
+
+Primary Route:
+
+- Destination: 10.10.20.0/24
+- Next Hop: 150.150.150.1
+- AD: 1
+
+Backup Route:
+
+- Destination: 10.10.20.0/24
+- Next Hop: 185.185.185.2
+- AD: 10
+
+Under normal conditions, the router chooses the primary route because its Administrative Distance is lower.
+
+If the primary route becomes unavailable, the backup static route may be installed in the routing table.
+
+### Route Selection
+
+Normal operation:
+
+```text
+Primary Route: AD 1   → Active
+Backup Route:  AD 10  → Standby
+```
+
+After primary route failure:
+
+```text
+Primary Route: Unavailable
+Backup Route:  AD 10  → Active
+```
+
+### Why Are Floating Static Routes Important?
+
+Floating static routes can:
+
+- Improve network availability.
+- Provide backup connectivity.
+- Reduce downtime during certain link failures.
+- Support alternative forwarding paths.
+- Demonstrate the practical use of Administrative Distance.
+
+**Important:** Floating static routes are not a complete failure-detection solution. If the primary next hop remains reachable despite an upstream failure, the primary route may remain active. Additional mechanisms such as IP SLA tracking can be used when more advanced failure detection is required.
+
+---
+
+## 7. Default Routing
+
+A default route is used when the routing table does not contain a more specific matching destination route.
+
+Default routing is commonly used to forward traffic to an ISP or upstream network.
+
+### Default Route Syntax
+
+```cisco
+Router(config)# ip route 0.0.0.0 0.0.0.0 <next-hop-address>
+```
+
+In this project, the Core router connects to the ISP using:
+
+100.100.100.0/24
+
+Example addressing:
+
+- Core Router: 100.100.100.1
+- ISP Router: 100.100.100.2
+
+The Core router can use:
+
+```cisco
+Core(config)# ip route 0.0.0.0 0.0.0.0 100.100.100.2
+```
+
+This means:
+
+"If there is no more specific matching route in the routing table, forward traffic to 100.100.100.2."
+
+### Default Route in the Routing Table
+
+```text
+S* 0.0.0.0/0 [1/0] via 100.100.100.2
+```
+
+Explanation:
+
+- `S`: Static route.
+- `*`: Candidate default route.
+- `0.0.0.0/0`: Default destination.
+- `1`: Administrative Distance.
+- `0`: Static route metric.
+- `100.100.100.2`: Next-hop address.
+
+A default route is also called the **Gateway of Last Resort** when selected as the router's default forwarding route.
+
+A default route toward an ISP does not automatically guarantee Internet connectivity. The upstream configuration, return routes, and potentially NAT must also be configured.
+
+---
+
+## 8. Network Redundancy
+
+Network redundancy means providing multiple possible communication paths to improve availability.
+
+In this topology, BR1 and BR2 are directly connected.
+
+Both branch routers also have their own connections to the Core router.
+
+This creates alternative paths for reaching remote networks.
+
+### Primary Path
+
+```text
+BR1 → Core Router → Server LAN
+```
+
+### Backup Path
+
+```text
+BR1 → BR2 → Core Router → Server LAN
+```
+
+If the direct BR1-to-Core connection fails, traffic may be redirected through BR2 using a correctly configured floating static route.
+
+### Benefits of Redundancy
+
+- Improved network reliability.
+- Increased availability.
+- Reduced downtime during supported failure scenarios.
+- Alternative forwarding paths.
+- Better fault tolerance.
+
+A complete redundant network requires both forward and return routes to be configured correctly.
+
+---
+
+## 9. Example Cisco Router Configuration
+
+The commands below illustrate how the routing concepts can be implemented.
+
+Interface names and IP assignments must be checked against the actual router models and saved Packet Tracer configurations.
+
+### Core Router Configuration
+
+```cisco
+enable
+configure terminal
+
+! Laptop LAN
+interface GigabitEthernet0/0
+ ip address 10.10.10.1 255.255.255.0
+ no shutdown
+exit
+
+! Server LAN
+interface GigabitEthernet0/1
+ ip address 10.10.20.1 255.255.255.0
+ no shutdown
+exit
+
+! Connection to BR1
+interface GigabitEthernet1/0
+ ip address 150.150.150.1 255.255.255.0
+ no shutdown
+exit
+
+! Connection to BR2
+interface GigabitEthernet1/1
+ ip address 200.200.200.1 255.255.255.0
+ no shutdown
+exit
+
+! Connection to ISP
+interface GigabitEthernet1/2
+ ip address 100.100.100.1 255.255.255.0
+ no shutdown
+exit
+
+! Static route to BR1 LAN
+ip route 10.10.30.0 255.255.255.0 150.150.150.2
+
+! Static route to BR2 LAN
+ip route 10.10.40.0 255.255.255.0 200.200.200.2
+
+! Default route toward ISP
+ip route 0.0.0.0 0.0.0.0 100.100.100.2
+
+end
+copy running-config startup-config
+```
+
+### BR1 Configuration
+
+```cisco
+enable
+configure terminal
+
+! BR1 LAN
+interface GigabitEthernet0/0
+ ip address 10.10.30.1 255.255.255.0
+ no shutdown
+exit
+
+! Connection to Core
+interface GigabitEthernet0/3/0
+ ip address 150.150.150.2 255.255.255.0
+ no shutdown
+exit
+
+! Connection to BR2
+interface GigabitEthernet0/1
+ ip address 185.185.185.1 255.255.255.0
+ no shutdown
+exit
+
+! Primary route to Server LAN
+ip route 10.10.20.0 255.255.255.0 150.150.150.1
+
+! Backup route to Server LAN through BR2
+ip route 10.10.20.0 255.255.255.0 185.185.185.2 10
+
+! Route to Laptop LAN
+ip route 10.10.10.0 255.255.255.0 150.150.150.1
+
+! Route to BR2 LAN
+ip route 10.10.40.0 255.255.255.0 185.185.185.2
+
+end
+copy running-config startup-config
+```
+
+### BR2 Configuration
+
+```cisco
+enable
+configure terminal
+
+! BR2 LAN
+interface GigabitEthernet0/0
+ ip address 10.10.40.1 255.255.255.0
+ no shutdown
+exit
+
+! Connection to Core
+interface GigabitEthernet0/3/0
+ ip address 200.200.200.2 255.255.255.0
+ no shutdown
+exit
+
+! Connection to BR1
+interface GigabitEthernet0/1
+ ip address 185.185.185.2 255.255.255.0
+ no shutdown
+exit
+
+! Primary route to Server LAN
+ip route 10.10.20.0 255.255.255.0 200.200.200.1
+
+! Backup route to Server LAN through BR1
+ip route 10.10.20.0 255.255.255.0 185.185.185.1 10
+
+! Route to BR1 LAN
+ip route 10.10.30.0 255.255.255.0 185.185.185.1
+
+! Route to Laptop LAN
+ip route 10.10.10.0 255.255.255.0 200.200.200.1
+
+end
+copy running-config startup-config
+```
+
+These configurations are illustrative and do not include every possible backup route. Complete end-to-end failover requires the correct return paths and any additional destination-specific backup routes.
+
+---
+
+## 10. Understanding the Routing Table
+
+The routing table stores information that routers use to forward packets.
+
+To display the IPv4 routing table:
+
+```cisco
+show ip route
+```
+
+### Common Routing Table Codes
+
+| Code | Meaning |
+|---|---|
+| C | Connected |
+| L | Local |
+| S | Static |
+| S* | Candidate Default Static Route |
+| R | RIP |
+| O | OSPF |
+| D | EIGRP |
+| B | BGP |
+
+Example:
+
+```text
+C 10.10.30.0/24 is directly connected, GigabitEthernet0/0
+L 10.10.30.1/32 is directly connected, GigabitEthernet0/0
+S 10.10.20.0/24 [1/0] via 150.150.150.1
+S 10.10.10.0/24 [1/0] via 150.150.150.1
+```
+
+### Understanding [1/0]
+
+```text
+[Administrative Distance / Metric]
+```
+
+In this example:
+
+- Administrative Distance: 1
+- Metric: 0
+
+The route is a static route using the default AD value.
+
+---
+
+## 11. Network Verification
+
+After configuring the routers, it is important to verify their interfaces, routing tables, and network connectivity.
+
+### Check Interface Status
+
+```cisco
+show ip interface brief
+```
+
+This command displays:
+
+- Interface names.
+- Assigned IP addresses.
+- Administrative status.
+- Line protocol status.
+
+An operational interface normally displays:
+
+```text
+up    up
+```
+
+If an interface displays:
+
+```text
+administratively down    down
+```
+
+it can be enabled using:
+
+```cisco
+configure terminal
+interface GigabitEthernet0/0
+no shutdown
+```
+
+### Verify Static Routes
+
+```cisco
+show ip route static
+```
+
+This command displays installed static routes.
+
+### Check Running Configuration
+
+```cisco
+show running-config
+```
+
+This command displays the active router configuration.
+
+### Check Startup Configuration
+
+```cisco
+show startup-config
+```
+
+This command displays the saved configuration stored in NVRAM.
+
+### Save the Configuration
+
+```cisco
+copy running-config startup-config
+```
+
+This saves the active configuration so it can be restored after a router reload.
+
+---
+
+## 12. Connectivity Testing
+
+### Ping
+
+The ping command uses ICMP to test network reachability.
+
+Example:
+
+```cisco
+ping 10.10.20.1
+```
+
+If the destination is reachable and ICMP is permitted, the router receives echo replies.
+
+Successful ping results indicate that packets can reach the destination and responses can return.
+
+### Traceroute
+
+Traceroute helps identify the path packets take to a destination.
+
+Cisco IOS:
+
+```cisco
+traceroute 10.10.20.1
+```
+
+Packet Tracer PC Command Prompt:
+
+```text
+tracert 10.10.20.1
+```
+
+Traceroute can help identify:
+
+- Intermediate routers.
+- Forwarding paths.
+- Unexpected route selection.
+- Potential points of failure.
+
+---
+
+## 13. Testing Floating Static Route Failover
+
+One of the most important parts of this project is understanding how backup routing works.
+
+### Step 1: Verify the Primary Route
+
+On BR1:
+
+```cisco
+show ip route 10.10.20.0
+```
+
+The preferred route should use the direct connection to the Core router.
+
+### Step 2: Simulate a Primary Link Failure
+
+Shut down BR1's interface connected to the Core router:
+
+```cisco
+configure terminal
+interface GigabitEthernet0/3/0
+shutdown
+```
+
+### Step 3: Check the Routing Table
+
+```cisco
+show ip route 10.10.20.0
+```
+
+If the floating static route is correctly configured and its next hop remains reachable, the route through BR2 should become active.
+
+### Step 4: Test Connectivity
+
+```cisco
+ping 10.10.20.1
+```
+
+Then check the forwarding path:
+
+```cisco
+traceroute 10.10.20.1
+```
+
+Expected alternative path:
+
+```text
+BR1 → BR2 → Core Router → Server LAN
+```
+
+For successful communication, BR2 and the Core router must have valid routes for both directions.
+
+### Step 5: Restore the Primary Link
+
+```cisco
+configure terminal
+interface GigabitEthernet0/3/0
+no shutdown
+```
+
+Once the direct link is operational again, the primary route should become preferred because its Administrative Distance is lower.
+
+---
+
+## 14. Troubleshooting Common Problems
+
+### Problem 1: Interface Is Administratively Down
+
+Check:
+
+```cisco
+show ip interface brief
+```
+
+Solution:
+
+```cisco
+configure terminal
+interface GigabitEthernet0/0
+no shutdown
+```
+
+### Problem 2: Incorrect IP Address or Subnet Mask
+
+Verify the IP configuration on both ends of the connection.
+
+Devices connected to the same IPv4 subnet should have compatible subnet addressing.
+
+### Problem 3: Missing Static Route
+
+Check:
+
+```cisco
+show ip route
+```
+
+If a remote network is missing, configure the required route.
+
+Example:
+
+```cisco
+ip route 10.10.20.0 255.255.255.0 150.150.150.1
+```
+
+### Problem 4: Incorrect Default Gateway
+
+Verify that PCs and servers are using the correct gateway.
+
+For example:
+
+```text
+PC IP:           10.10.30.10
+Subnet Mask:     255.255.255.0
+Default Gateway: 10.10.30.1
+```
+
+### Problem 5: Ping Works in One Direction but Not Another
+
+Possible causes include:
+
+- Missing return route.
+- Incorrect subnet mask.
+- Incorrect destination IP.
+- Interface problems.
+- Access Control List restrictions.
+
+Verify routes on every router along the path.
+
+### Problem 6: Floating Static Route Does Not Become Active
+
+Possible causes include:
+
+- Incorrect Administrative Distance.
+- Primary route is still valid.
+- Backup next hop is unreachable.
+- Incorrect destination prefix.
+- Backup interface is down.
+- Recursive next-hop resolution problems.
+
+Verify:
+
+```cisco
+show ip route
+show ip route static
+show ip interface brief
+show running-config
+```
+
+---
+
+## 15. Key Networking Concepts Demonstrated
+
+### Static Routing
+
+Manual configuration of routes to reach remote networks.
+
+### Administrative Distance
+
+A numeric value that determines route-source preference when eligible routes to the same destination prefix compete.
+
+### Floating Static Routes
+
+Backup routes configured with a higher Administrative Distance than primary routes.
+
+### Default Routing
+
+A route used when no more specific matching route exists.
+
+### Next-Hop Address
+
+The neighboring router IP address used to forward packets toward a remote destination.
+
+### Directly Connected Networks
+
+Networks automatically added to the routing table when a router interface is configured and operational.
+
+### Routing Tables
+
+Data structures used by routers to determine forwarding paths.
+
+### Network Redundancy
+
+Using multiple potential paths to improve network availability.
+
+### Failover
+
+Switching to an alternative path when the primary route becomes unavailable.
+
+### Troubleshooting
+
+Using Cisco IOS commands to identify and resolve networking issues.
+
+---
+
+## 16. Skills Developed
+
+Through this project, I practiced:
+
+- Cisco Packet Tracer network design.
+- Cisco IOS CLI configuration.
+- IPv4 addressing and subnetting.
+- Router interface configuration.
+- Static route configuration.
+- Administrative Distance analysis.
+- Floating static route configuration.
+- Default route configuration.
+- Routing table interpretation.
+- Network connectivity verification.
+- Redundancy and failover concepts.
+- Troubleshooting routing problems.
+- Saving configurations to NVRAM.
+
+---
+
+## 17. Tools and Technologies
+
+- Cisco Packet Tracer
+- Cisco IOS CLI
+- IPv4 Networking
+- Static Routing
+- Administrative Distance
+- Floating Static Routes
+- Default Routing
+- Ethernet Switching
+- ICMP
+- Ping and Traceroute
+
+---
+
+## Conclusion
+
+This project helped me strengthen my understanding of how routers communicate across multiple IP networks and how routing decisions are made.
+
+By designing a topology with a central router, two branch routers, an ISP connection, and multiple LANs, I explored the practical implementation of static routing and Administrative Distance.
+
+One of the key concepts covered in this lab is the use of Floating Static Routes to provide alternative paths when primary routes become unavailable.
+
+I also practiced verifying routing tables, configuring interfaces, troubleshooting connectivity problems, and using Cisco IOS commands to analyze network behavior.
+
+Overall, this project provides practical experience with fundamental enterprise networking concepts and supports my continued learning in Cisco networking and network administration.
+
+---
+
+**Project Type:** Cisco Networking Lab  
+**Simulation Software:** Cisco Packet Tracer  
+**Main Topics:** Static Routing, Administrative Distance, Floating Static Routes, Default Routing, Network Redundancy  
+**Level:** Beginner to Intermediate  
+**Purpose:** Hands-on Networking Practice and Technical Skill Development
